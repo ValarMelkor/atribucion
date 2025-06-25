@@ -91,46 +91,52 @@ class ForensicAnalyzer:
         
         return profile.sort_values(ascending=False)
     
-    def build_profiles(self, texts: Dict[str, str], level: str = "char", 
-                      n_range: Tuple[int, int] = None, top_k: int = 500) -> Dict[str, pd.Series]:
+    def build_profiles(
+        self,
+        texts: Dict[str, str],
+        level: Union[str, List[str]] = "char",
+        n_range: Tuple[int, int] = None,
+        top_k: int = 500,
+    ) -> Union[Dict[str, pd.Series], Dict[str, Dict[str, pd.Series]]]:
+        """Construye perfiles de n-gramas para múltiples textos.
+
+        Si ``level`` es una lista, se generarán todos los perfiles indicados en
+        un mismo ciclo y se devolverá un diccionario por nivel.
         """
-        Construye perfiles de n-gramas para múltiples textos
-        
-        Args:
-            texts: Diccionario {id_texto: contenido}
-            level: "char" o "word"
-            n_range: Rango de n-gramas
-            top_k: Número máximo de n-gramas más frecuentes
-        """
-        if n_range is None:
-            n_range = (3, 5) if level == "char" else (1, 3)
-        
-        profiles = {}
-        
+
+        levels = [level] if isinstance(level, str) else list(level)
+
+        base_range = tuple(n_range) if n_range is not None else None
+
+        multi_level = len(levels) > 1
+        profiles = {lvl: {} for lvl in levels} if multi_level else {}
+
         for text_id, content in texts.items():
-            logger.info(f"Construyendo perfil {level} para: {text_id}")
-            
-            # Normalizar y validar
             normalized = self.normalize_text(content)
             self.validate_text(normalized, text_id)
-            
-            # Guardar metadata
+
             self.text_metadata[text_id] = {
-                'length': len(normalized),
-                'words': len(normalized.split()),
-                'level': level
+                "length": len(normalized),
+                "words": len(normalized.split()),
+                "level": ",".join(levels),
             }
-            
-            # Construir perfil según tipo
-            if level == "char":
-                profile = self.build_char_profile(normalized, n_range, top_k)
-            elif level == "word":
-                profile = self.build_word_profile(normalized, n_range, top_k)
-            else:
-                raise ValueError(f"Nivel no soportado: {level}")
-            
-            profiles[text_id] = profile
-        
+
+            for lvl in levels:
+                rng = base_range if base_range else ((3, 5) if lvl == "char" else (1, 3))
+                if lvl == "char":
+                    profile = self.build_char_profile(normalized, rng, top_k)
+                    self.profiles_char[text_id] = profile
+                elif lvl == "word":
+                    profile = self.build_word_profile(normalized, rng, top_k)
+                    self.profiles_word[text_id] = profile
+                else:
+                    raise ValueError(f"Nivel no soportado: {lvl}")
+
+                if multi_level:
+                    profiles[lvl][text_id] = profile
+                else:
+                    profiles[text_id] = profile
+
         return profiles
     
     def cosine_tfidf_similarity(self, profiles_a: Dict[str, pd.Series], 
@@ -269,28 +275,49 @@ class ForensicAnalyzer:
             columns=list(profiles_b.keys())
         )
     
-    def compare_profiles(self, profiles_a: Dict[str, pd.Series], 
-                        profiles_b: Dict[str, pd.Series],
-                        metrics: List[str] = None) -> Dict[str, pd.DataFrame]:
-        """Compara perfiles usando múltiples métricas"""
+    def _compare_single(
+        self,
+        profiles_a: Dict[str, pd.Series],
+        profiles_b: Dict[str, pd.Series],
+        metrics: List[str],
+    ) -> Dict[str, pd.DataFrame]:
         if metrics is None:
             metrics = ["cosine", "delta", "jsd"]
-        
+
         results = {}
-        
+
         if "cosine" in metrics:
             logger.info("Calculando similitud coseno TF-IDF...")
             results["cosine"] = self.cosine_tfidf_similarity(profiles_a, profiles_b)
-        
+
         if "delta" in metrics:
             logger.info("Calculando Burrows's Delta...")
             results["delta"] = self.burrows_delta(profiles_a, profiles_b)
-        
+
         if "jsd" in metrics:
             logger.info("Calculando Jensen-Shannon Divergence...")
             results["jsd"] = self.jensen_shannon_divergence(profiles_a, profiles_b)
-        
+
         return results
+
+    def compare_profiles(
+        self,
+        profiles_a: Union[Dict[str, pd.Series], Dict[str, Dict[str, pd.Series]]],
+        profiles_b: Union[Dict[str, pd.Series], Dict[str, Dict[str, pd.Series]]],
+        metrics: List[str] = None,
+    ) -> Union[Dict[str, pd.DataFrame], Dict[str, Dict[str, pd.DataFrame]]]:
+        """Compara perfiles para uno o varios niveles."""
+
+        # Caso multi-nivel
+        if profiles_a and isinstance(next(iter(profiles_a.values())), dict):
+            results = {}
+            for lvl in profiles_a.keys():
+                res = self._compare_single(profiles_a[lvl], profiles_b.get(lvl, {}), metrics)
+                results[lvl] = res
+            return results
+
+        # Caso simple
+        return self._compare_single(profiles_a, profiles_b, metrics)
     
     def plot_top_ngrams(self, profile: pd.Series, text_id: str, 
                        top_n: int = 20, save_path: Optional[Path] = None) -> Path:
@@ -336,16 +363,18 @@ class ForensicAnalyzer:
         
         return save_path
     
-    def export_results(self, profiles_known: Dict[str, pd.Series],
-                      profiles_query: Dict[str, pd.Series],
-                      distances: Dict[str, pd.DataFrame],
-                      out_dir: Path) -> Dict[str, Path]:
-        """Exporta resultados a archivos"""
+    def _export_single(
+        self,
+        profiles_known: Dict[str, pd.Series],
+        profiles_query: Dict[str, pd.Series],
+        distances: Dict[str, pd.DataFrame],
+        out_dir: Path,
+    ) -> Dict[str, Path]:
         out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        
+
         exported_files = {}
-        
+
         # 1. Exportar perfiles como CSV
         logger.info("Exportando perfiles...")
         profiles_data = []
@@ -436,9 +465,35 @@ class ForensicAnalyzer:
         with open(metadata_path, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, indent=2, ensure_ascii=False)
         exported_files['metadata'] = metadata_path
-        
-        logger.info(f"Exportación completa. {len(exported_files)} archivos generados en {out_dir}")
+
+        logger.info(
+            f"Exportación completa. {len(exported_files)} archivos generados en {out_dir}"
+        )
         return exported_files
+
+    def export_results(
+        self,
+        profiles_known: Union[Dict[str, pd.Series], Dict[str, Dict[str, pd.Series]]],
+        profiles_query: Union[Dict[str, pd.Series], Dict[str, Dict[str, pd.Series]]],
+        distances: Union[Dict[str, pd.DataFrame], Dict[str, Dict[str, pd.DataFrame]]],
+        out_dir: Path,
+    ) -> Dict[str, Path]:
+        """Exporta resultados para uno o varios niveles."""
+
+        if profiles_known and isinstance(next(iter(profiles_known.values())), dict):
+            all_files: Dict[str, Path] = {}
+            for lvl in profiles_known.keys():
+                sub_out = Path(out_dir) / lvl
+                files = self._export_single(
+                    profiles_known[lvl],
+                    profiles_query.get(lvl, {}),
+                    distances.get(lvl, {}),
+                    sub_out,
+                )
+                all_files.update({f"{k}_{lvl}": v for k, v in files.items()})
+            return all_files
+
+        return self._export_single(profiles_known, profiles_query, distances, Path(out_dir))
 
 
 def load_texts_from_directory(directory: Path) -> Dict[str, str]:
@@ -471,6 +526,28 @@ def load_texts_from_directory(directory: Path) -> Dict[str, str]:
     return texts
 
 
+def load_texts_by_author(directory: Path) -> Dict[str, str]:
+    """Carga textos agrupados por subdirectorios (autores)."""
+    directory = Path(directory)
+    if not directory.exists():
+        raise FileNotFoundError(f"Directorio no encontrado: {directory}")
+
+    author_texts: Dict[str, str] = {}
+    subdirs = [d for d in directory.iterdir() if d.is_dir()]
+
+    if subdirs:
+        for sub in subdirs:
+            texts = load_texts_from_directory(sub)
+            if texts:
+                combined = "\n".join(texts.values())
+                author_texts[sub.name] = combined
+    else:
+        # Sin subdirectorios, comportarse como carga simple
+        author_texts = load_texts_from_directory(directory)
+
+    return author_texts
+
+
 def main():
     """Función principal para uso como script"""
     parser = argparse.ArgumentParser(
@@ -479,20 +556,34 @@ def main():
         epilog="""
 Ejemplos de uso:
   python ngram_mod.py --known ./conocidos --query ./dubitados --out ./resultados
-  python ngram_mod.py --known ./conocidos --query ./dubitados --level word --metrics cosine delta
+  python ngram_mod.py --known ./conocidos --query ./dubitados --levels char word
         """
     )
     
-    parser.add_argument('--known', type=str, required=True,
-                       help='Directorio con textos de autor conocido')
+    parser.add_argument(
+        '--known',
+        type=str,
+        required=True,
+        help='Directorio con textos de autor conocido (usa subdirectorios por autor)'
+    )
     parser.add_argument('--query', type=str, required=True,
                        help='Directorio con textos dubitados')
     parser.add_argument('--out', type=str, required=True,
                        help='Directorio de salida para resultados')
-    parser.add_argument('--level', choices=['char', 'word'], default='char',
-                       help='Tipo de n-gramas: char o word (default: char)')
-    parser.add_argument('--n-range', nargs=2, type=int, metavar=('MIN', 'MAX'),
-                       help='Rango de n-gramas (default: 3-5 para char, 1-3 para word)')
+    parser.add_argument(
+        '--levels',
+        nargs='+',
+        choices=['char', 'word'],
+        default=['char'],
+        help='Niveles de n-gramas a analizar: char y/o word'
+    )
+    parser.add_argument(
+        '--n-range',
+        nargs=2,
+        type=int,
+        metavar=('MIN', 'MAX'),
+        help='Rango de n-gramas para ambos niveles'
+    )
     parser.add_argument('--top-k', type=int, default=500,
                        help='Número máximo de n-gramas más frecuentes (default: 500)')
     parser.add_argument('--metrics', nargs='+', choices=['cosine', 'delta', 'jsd'],
@@ -509,7 +600,7 @@ Ejemplos de uso:
         
         # Cargar textos
         logger.info("Cargando textos conocidos...")
-        known_texts = load_texts_from_directory(args.known)
+        known_texts = load_texts_by_author(args.known)
         logger.info(f"Cargados {len(known_texts)} textos conocidos")
         
         logger.info("Cargando textos dubitados...")
@@ -517,17 +608,15 @@ Ejemplos de uso:
         logger.info(f"Cargados {len(query_texts)} textos dubitados")
         
         # Configurar rango de n-gramas
-        n_range = args.n_range
-        if n_range is None:
-            n_range = (3, 5) if args.level == 'char' else (1, 3)
+        n_range = tuple(args.n_range) if args.n_range else None
         
         # Construir perfiles
-        logger.info(f"Construyendo perfiles de n-gramas ({args.level})...")
+        logger.info(f"Construyendo perfiles de n-gramas ({', '.join(args.levels)})...")
         profiles_known = analyzer.build_profiles(
-            known_texts, level=args.level, n_range=tuple(n_range), top_k=args.top_k
+            known_texts, level=args.levels, n_range=n_range, top_k=args.top_k
         )
         profiles_query = analyzer.build_profiles(
-            query_texts, level=args.level, n_range=tuple(n_range), top_k=args.top_k
+            query_texts, level=args.levels, n_range=n_range, top_k=args.top_k
         )
         
         # Comparar perfiles
@@ -549,6 +638,7 @@ Ejemplos de uso:
         print(f"Textos conocidos: {len(known_texts)}")
         print(f"Textos dubitados: {len(query_texts)}")
         print(f"Métricas calculadas: {', '.join(args.metrics)}")
+        print(f"Niveles analizados: {', '.join(args.levels)}")
         print(f"Archivos generados: {len(exported_files)}")
         print(f"Directorio de salida: {args.out}")
         print("\nArchivos principales:")
