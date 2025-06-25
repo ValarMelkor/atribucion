@@ -1,0 +1,8 @@
+numpy
+pandas
+matplotlib
+scipy
+scikit-learn
+spacy
+lexicalrichness
+readability_es
