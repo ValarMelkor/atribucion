@@ -43,6 +43,12 @@ El script `full_analysis.py` ejecuta los tres módulos de forma consecutiva y re
    python full_analysis.py --known ruta/conocidos --query ruta/dubitados --out salida
    ```
 
-   Al iniciarse, `full_analysis.py` comprobará e instalará automáticamente los paquetes indicados en `requirements.txt` si alguno falta.
+    Al iniciarse, `full_analysis.py` comprobará e instalará automáticamente los paquetes indicados en `requirements.txt` si alguno falta.
+
+    Si la instalación automática falla, puedes instalarlos manualmente con:
+
+    ```bash
+    pip install -r requirements.txt
+    ```
 
 Los resultados incluirán archivos CSV con perfiles, gráficas PNG y un archivo `full_summary.txt` con las rutas de todos los artefactos generados.
