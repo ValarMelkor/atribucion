@@ -16,7 +16,14 @@ def install_requirements() -> None:
 
     try:
         import pkg_resources
+    except ImportError:
+        try:
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", str(req_file)])
+        except Exception as e:  # pragma: no cover - solo se usa en ejecución directa
+            print(f"Advertencia: no se pudo instalar dependencias automáticamente: {e}")
+        return
 
+    try:
         with open(req_file, "r", encoding="utf-8") as f:
             packages = [line.strip() for line in f if line.strip() and not line.startswith("#")]
 

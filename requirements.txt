@@ -6,3 +6,4 @@ scikit-learn
 spacy
 lexicalrichness
 readability_es
+setuptools
