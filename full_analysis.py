@@ -4,6 +4,40 @@
 import argparse
 from pathlib import Path
 import importlib.util
+import subprocess
+import sys
+
+
+def install_requirements() -> None:
+    """Instala los paquetes listados en requirements.txt si faltan."""
+    req_file = Path(__file__).with_name("requirements.txt")
+    if not req_file.exists():
+        return
+
+    try:
+        import pkg_resources
+
+        with open(req_file, "r", encoding="utf-8") as f:
+            packages = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+
+        missing = []
+        for pkg in packages:
+            try:
+                pkg_resources.require(pkg)
+            except (pkg_resources.DistributionNotFound, pkg_resources.VersionConflict):
+                missing.append(pkg)
+
+        if missing:
+            print(f"Instalando dependencias: {', '.join(missing)}")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", *missing])
+    except Exception as e:  # pragma: no cover - solo se usa en ejecución directa
+        print(f"Advertencia: no se pudo instalar dependencias automáticamente: {e}")
+
+
+
+
+# Instalar dependencias antes de cargar los módulos
+install_requirements()
 
 # Cargar módulos con nombres que contienen espacios
 
