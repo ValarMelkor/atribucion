@@ -16,8 +16,11 @@ def _run_pip(args):
         return
     if "externally-managed-environment" in proc.stderr:
         print("Entorno administrado externamente, reintentando con --user...")
-        cmd.insert(3, "--user")
-        subprocess.check_call(cmd)
+        if args and args[0] == "install":
+            user_cmd = [sys.executable, "-m", "pip", "install", "--user", *args[1:]]
+        else:
+            user_cmd = [sys.executable, "-m", "pip", *args, "--user"]
+        subprocess.check_call(user_cmd)
     else:
         raise RuntimeError(proc.stderr)
 
