@@ -37,7 +37,15 @@ El script `full_analysis.py` ejecuta los tres módulos de forma consecutiva y re
 ## Ejecución rápida
 
 1. Asegúrate de tener Python instalado.
-2. Ejecuta el script principal desde la línea de comandos:
+2. (Opcional pero recomendado) crea un entorno virtual para evitar problemas con
+   entornos gestionados externamente:
+
+   ```bash
+   python -m venv venv
+   source venv/bin/activate
+   ```
+
+3. Ejecuta el script principal desde la línea de comandos:
 
    ```bash
    python full_analysis.py --known ruta/conocidos --query ruta/dubitados --out salida
@@ -45,7 +53,8 @@ El script `full_analysis.py` ejecuta los tres módulos de forma consecutiva y re
 
     Al iniciarse, `full_analysis.py` comprobará e instalará automáticamente los paquetes indicados en `requirements.txt` si alguno falta.
 
-    Si la instalación automática falla, puedes instalarlos manualmente con:
+    Si la instalación automática falla (por ejemplo por el mensaje
+    `externally-managed-environment`), instala las dependencias manualmente con:
 
     ```bash
     pip install -r requirements.txt

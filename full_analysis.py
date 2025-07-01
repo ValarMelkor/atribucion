@@ -8,6 +8,20 @@ import subprocess
 import sys
 
 
+def _run_pip(args):
+    """Run pip with given arguments and handle PEP 668 errors."""
+    cmd = [sys.executable, "-m", "pip", *args]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    if proc.returncode == 0:
+        return
+    if "externally-managed-environment" in proc.stderr:
+        print("Entorno administrado externamente, reintentando con --user...")
+        cmd.insert(3, "--user")
+        subprocess.check_call(cmd)
+    else:
+        raise RuntimeError(proc.stderr)
+
+
 def install_requirements() -> None:
     """Instala los paquetes listados en requirements.txt si faltan."""
     req_file = Path(__file__).with_name("requirements.txt")
@@ -18,7 +32,7 @@ def install_requirements() -> None:
         import pkg_resources
     except ImportError:
         try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", str(req_file)])
+            _run_pip(["install", "-r", str(req_file)])
         except Exception as e:  # pragma: no cover - solo se usa en ejecución directa
             print(f"Advertencia: no se pudo instalar dependencias automáticamente: {e}")
         return
@@ -36,7 +50,7 @@ def install_requirements() -> None:
 
         if missing:
             print(f"Instalando dependencias: {', '.join(missing)}")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", *missing])
+            _run_pip(["install", *missing])
     except Exception as e:  # pragma: no cover - solo se usa en ejecución directa
         print(f"Advertencia: no se pudo instalar dependencias automáticamente: {e}")
 
