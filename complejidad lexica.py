@@ -33,6 +33,7 @@ import warnings
 from collections import Counter
 from pathlib import Path
 from typing import Dict, List, Optional, Union
+import subprocess
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -355,6 +356,29 @@ def compare_lexical_profiles(
     return pd.DataFrame(results)
 
 
+def markdown_to_pdf(md_path: Path) -> Optional[Path]:
+    """Convierte un archivo Markdown a PDF usando pandoc o fpdf si están disponibles."""
+    pdf_path = md_path.with_suffix('.pdf')
+    try:
+        subprocess.run(['pandoc', str(md_path), '-o', str(pdf_path)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return pdf_path
+    except Exception:
+        pass
+    try:
+        from fpdf import FPDF
+
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_font('Arial', size=12)
+        for line in md_path.read_text(encoding='utf-8').splitlines():
+            pdf.multi_cell(0, 10, txt=line)
+        pdf.output(str(pdf_path))
+        return pdf_path
+    except Exception:
+        return None
+
+
 def export_lexical_results(
     profiles: Dict[str, pd.Series],
     distances: pd.DataFrame,
@@ -480,9 +504,24 @@ def export_lexical_results(
         heatmap_path = out_dir / "distances_heatmap.png"
         plt.savefig(heatmap_path, dpi=300, bbox_inches='tight')
         plt.close()
-        
+
         files_created['heatmap'] = heatmap_path
-    
+
+    # 5. Resumen en Markdown y PDF opcional
+    md_path = out_dir / "lexical_summary.md"
+    with open(md_path, 'w', encoding='utf-8') as md:
+        md.write("# Resumen complejidad léxica\n\n")
+        md.write("## Perfiles (primeras filas)\n\n")
+        md.write(profiles_df.head().to_markdown())
+        md.write("\n\n## Distancias\n\n")
+        md.write(distances.to_markdown(index=False))
+        md.write("\n")
+    files_created['summary_md'] = md_path
+
+    pdf = markdown_to_pdf(md_path)
+    if pdf:
+        files_created['summary_pdf'] = pdf
+
     return files_created
 
 

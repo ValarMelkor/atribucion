@@ -14,6 +14,7 @@ Python: 3.12+
 
 import argparse
 import logging
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
 import warnings
@@ -372,10 +373,28 @@ class SyntaxForensics:
             heatmap_path = self._plot_distance_heatmap(distances, out_dir)
             if heatmap_path:
                 artifacts['heatmap'] = heatmap_path
-        
+
         # 5. Generar reporte resumen
         report_path = self._generate_summary_report(profiles, distances, out_dir)
         artifacts['report'] = report_path
+
+        # 6. Resumen en Markdown y PDF opcional
+        md_path = out_dir / "syntax_summary.md"
+        with open(md_path, 'w', encoding='utf-8') as md:
+            md.write("# Resumen análisis sintáctico\n\n")
+            md.write("## Métricas por texto\n\n")
+            metrics_df = profiles_df[['avg_sentence_length', 'avg_dependency_distance', 'subordinate_ratio']]
+            md.write(metrics_df.to_markdown())
+            md.write("\n\n")
+            if not distances.empty:
+                md.write("## Distancias\n\n")
+                md.write(distances.to_markdown(index=False))
+                md.write("\n")
+        artifacts['summary_md'] = md_path
+
+        pdf = self._markdown_to_pdf(md_path)
+        if pdf:
+            artifacts['summary_pdf'] = pdf
         
         logger.info(f"Resultados exportados en: {out_dir}")
         return artifacts
@@ -453,8 +472,30 @@ class SyntaxForensics:
         heatmap_path = out_dir / "distance_heatmap.png"
         plt.savefig(heatmap_path, dpi=300, bbox_inches='tight')
         plt.close()
-        
+
         return heatmap_path
+
+    def _markdown_to_pdf(self, md_path: Path) -> Optional[Path]:
+        """Convierte Markdown a PDF usando pandoc o fpdf si están disponibles."""
+        pdf_path = md_path.with_suffix('.pdf')
+        try:
+            subprocess.run(['pandoc', str(md_path), '-o', str(pdf_path)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return pdf_path
+        except Exception:
+            pass
+        try:
+            from fpdf import FPDF
+
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_auto_page_break(auto=True, margin=15)
+            pdf.set_font('Arial', size=12)
+            for line in md_path.read_text(encoding='utf-8').splitlines():
+                pdf.multi_cell(0, 10, txt=line)
+            pdf.output(str(pdf_path))
+            return pdf_path
+        except Exception:
+            return None
     
     def _generate_summary_report(self, 
                                profiles: Dict[str, pd.Series], 

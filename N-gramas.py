@@ -8,6 +8,7 @@ import argparse
 import csv
 import logging
 import re
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Tuple, Union, Optional
 import warnings
@@ -319,7 +320,7 @@ class ForensicAnalyzer:
         # Caso simple
         return self._compare_single(profiles_a, profiles_b, metrics)
     
-    def plot_top_ngrams(self, profile: pd.Series, text_id: str, 
+    def plot_top_ngrams(self, profile: pd.Series, text_id: str,
                        top_n: int = 20, save_path: Optional[Path] = None) -> Path:
         """Genera gráfico de barras con los n-gramas más frecuentes"""
         plt.figure(figsize=(12, 8))
@@ -360,8 +361,32 @@ class ForensicAnalyzer:
         
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         plt.close()
-        
+
         return save_path
+
+    def _markdown_to_pdf(self, md_path: Path) -> Optional[Path]:
+        """Convierte un archivo Markdown a PDF utilizando pandoc o fpdf si están disponibles."""
+        pdf_path = md_path.with_suffix('.pdf')
+        # Intentar con pandoc
+        try:
+            subprocess.run(['pandoc', str(md_path), '-o', str(pdf_path)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            return pdf_path
+        except Exception:
+            pass
+        # Intentar con fpdf
+        try:
+            from fpdf import FPDF
+
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_auto_page_break(auto=True, margin=15)
+            pdf.set_font('Arial', size=12)
+            for line in md_path.read_text(encoding='utf-8').splitlines():
+                pdf.multi_cell(0, 10, txt=line)
+            pdf.output(str(pdf_path))
+            return pdf_path
+        except Exception:
+            return None
     
     def _export_single(
         self,
@@ -443,6 +468,23 @@ class ForensicAnalyzer:
         summary_path = out_dir / "summary.csv"
         summary_df.to_csv(summary_path, index=False, encoding='utf-8')
         exported_files['summary'] = summary_path
+
+        # 3b. Resumen en Markdown y PDF opcional
+        markdown_path = out_dir / "summary.md"
+        with open(markdown_path, 'w', encoding='utf-8') as md:
+            md.write("# Resumen de métricas n-gramas\n\n")
+            for metric, matrix in distances.items():
+                md.write(f"## {metric.capitalize()}\n\n")
+                md.write(matrix.to_markdown())
+                md.write("\n\n")
+            md.write("### Ranking resumido\n\n")
+            md.write(summary_df.head(10).to_markdown(index=False))
+            md.write("\n")
+        exported_files['summary_md'] = markdown_path
+
+        pdf_path = self._markdown_to_pdf(markdown_path)
+        if pdf_path:
+            exported_files['summary_pdf'] = pdf_path
         
         # 4. Generar gráficos de n-gramas
         logger.info("Generando gráficos de n-gramas...")
