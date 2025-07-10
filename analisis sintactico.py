@@ -64,7 +64,9 @@ class SyntaxForensics:
         try:
             self.nlp = spacy.load(self.model_name)
             # Optimización: desactivar componentes innecesarios
-            self.nlp.disable_pipes(['ner', 'textcat'] if 'textcat' in self.nlp.pipe_names else ['ner'])
+            pipes_to_disable = [p for p in ('ner', 'textcat') if p in self.nlp.pipe_names]
+            if pipes_to_disable:
+                self.nlp.disable_pipes(*pipes_to_disable)
             logger.info(f"Modelo {self.model_name} cargado exitosamente")
         except OSError:
             logger.error(f"Error: Modelo {self.model_name} no encontrado")
