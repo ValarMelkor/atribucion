@@ -323,10 +323,12 @@ class SyntaxForensics:
         except:
             return 1.0
     
-    def export_syntax_results(self, 
-                            profiles: Dict[str, pd.Series], 
-                            distances: pd.DataFrame, 
-                            out_dir: Path) -> Dict[str, Path]:
+    def export_syntax_results(self,
+                            profiles: Dict[str, pd.Series],
+                            distances: pd.DataFrame,
+                            out_dir: Path,
+                            author: str = "",
+                            query: str = "") -> Dict[str, Path]:
         """
         Exporta todos los resultados del análisis sintáctico.
         
@@ -338,7 +340,10 @@ class SyntaxForensics:
         Returns:
             Diccionario con rutas de artefactos generados
         """
-        out_dir = Path(out_dir)
+        if author and query:
+            out_dir = Path(out_dir) / author / f"Resultados_{author}_{query}"
+        else:
+            out_dir = Path(out_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         
         artifacts = {}
@@ -493,20 +498,35 @@ class SyntaxForensics:
         return report_path
 
 
-def load_texts_from_directory(directory: Path) -> Dict[str, str]:
-    """Carga todos los archivos de texto de un directorio."""
-    texts = {}
-    
+def load_texts_from_directory(directory: Path, combine_subdirs: bool = False) -> Dict[str, str]:
+    """Carga archivos de texto de un directorio.
+
+    Si ``combine_subdirs`` es ``True`` y el directorio contiene subcarpetas, los
+    archivos de cada subdirectorio se combinan y se devuelven bajo el nombre de
+    dicha carpeta. Esto es útil para manejar colecciones como ``Dubitados/A1``.
+    """
+
+    directory = Path(directory)
+    texts: Dict[str, str] = {}
+
+    subdirs = [d for d in directory.iterdir() if d.is_dir()]
+    if combine_subdirs and subdirs:
+        for sub in subdirs:
+            sub_texts = load_texts_from_directory(sub)
+            if sub_texts:
+                texts[sub.name] = "\n".join(sub_texts.values())
+        return texts
+
     for file_path in directory.glob("*.txt"):
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read().strip()
-                if content:  # Solo archivos no vacíos
+                if content:
                     texts[file_path.stem] = content
                     logger.info(f"Cargado: {file_path.name} ({len(content)} caracteres)")
         except Exception as e:
             logger.warning(f"Error cargando {file_path}: {e}")
-    
+
     return texts
 
 

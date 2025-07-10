@@ -477,8 +477,17 @@ class ForensicAnalyzer:
         profiles_query: Union[Dict[str, pd.Series], Dict[str, Dict[str, pd.Series]]],
         distances: Union[Dict[str, pd.DataFrame], Dict[str, Dict[str, pd.DataFrame]]],
         out_dir: Path,
+        author: str = "",
+        query: str = "",
     ) -> Dict[str, Path]:
-        """Exporta resultados para uno o varios niveles."""
+        """Exporta resultados para uno o varios niveles.
+
+        Si se proporcionan ``author`` y ``query``, los archivos se guardarán en
+        ``out_dir/author/Resultados_<author>_<query>``.
+        """
+
+        if author and query:
+            out_dir = Path(out_dir) / author / f"Resultados_{author}_{query}"
 
         if profiles_known and isinstance(next(iter(profiles_known.values())), dict):
             all_files: Dict[str, Path] = {}
@@ -496,33 +505,49 @@ class ForensicAnalyzer:
         return self._export_single(profiles_known, profiles_query, distances, Path(out_dir))
 
 
-def load_texts_from_directory(directory: Path) -> Dict[str, str]:
-    """Carga todos los archivos de texto de un directorio"""
-    texts = {}
+def load_texts_from_directory(directory: Path, combine_subdirs: bool = False) -> Dict[str, str]:
+    """Carga todos los archivos de texto de un directorio.
+
+    Si ``combine_subdirs`` es ``True`` y existen subdirectorios, se combinarán
+    los textos de cada subcarpeta bajo un único identificador con el nombre de
+    dicha carpeta. Esto permite tratar colecciones como ``Dubitados/A1``.
+    """
+
     directory = Path(directory)
-    
     if not directory.exists():
         raise FileNotFoundError(f"Directorio no encontrado: {directory}")
-    
+
+    texts: Dict[str, str] = {}
+
+    subdirs = [d for d in directory.iterdir() if d.is_dir()]
+
+    # Cuando se solicite combinar subdirectorios y existan carpetas internas
+    if combine_subdirs and subdirs:
+        for sub in subdirs:
+            sub_texts = load_texts_from_directory(sub)
+            if sub_texts:
+                texts[sub.name] = "\n".join(sub_texts.values())
+        return texts
+
     # Formatos soportados
     extensions = ['.txt', '.md', '.text']
-    
+
     for file_path in directory.iterdir():
         if file_path.is_file() and file_path.suffix.lower() in extensions:
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     content = f.read().strip()
-                    if content:  # Solo textos no vacíos
+                    if content:
                         texts[file_path.stem] = content
                         logger.info(f"Cargado: {file_path.name} ({len(content)} caracteres)")
             except UnicodeDecodeError:
                 logger.warning(f"Error de codificación en: {file_path}")
             except Exception as e:
                 logger.error(f"Error cargando {file_path}: {e}")
-    
+
     if not texts:
         raise ValueError(f"No se encontraron textos válidos en: {directory}")
-    
+
     return texts
 
 

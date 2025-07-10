@@ -358,7 +358,9 @@ def compare_lexical_profiles(
 def export_lexical_results(
     profiles: Dict[str, pd.Series],
     distances: pd.DataFrame,
-    out_dir: Path
+    out_dir: Path,
+    author: str = "",
+    query: str = ""
 ) -> Dict[str, Path]:
     """
     Exporta resultados del análisis léxico a archivos CSV y PNG.
@@ -371,7 +373,10 @@ def export_lexical_results(
     Returns:
         Diccionario con rutas de archivos generados
     """
-    out_dir = Path(out_dir)
+    if author and query:
+        out_dir = Path(out_dir) / author / f"Resultados_{author}_{query}"
+    else:
+        out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     
     files_created = {}
@@ -479,6 +484,36 @@ def export_lexical_results(
         files_created['heatmap'] = heatmap_path
     
     return files_created
+
+
+def load_texts_from_directory(directory: Path, combine_subdirs: bool = False) -> Dict[str, str]:
+    """Carga textos desde un directorio.
+
+    Cuando ``combine_subdirs`` es ``True`` se combinan los archivos de cada
+    subcarpeta y se devuelven bajo el nombre de la carpeta. Esto permite
+    procesar estructuras como ``Dubitados/A1`` o similares.
+    """
+    directory = Path(directory)
+    texts: Dict[str, str] = {}
+
+    subdirs = [d for d in directory.iterdir() if d.is_dir()]
+    if combine_subdirs and subdirs:
+        for sub in subdirs:
+            sub_texts = load_texts_from_directory(sub)
+            if sub_texts:
+                texts[sub.name] = "\n".join(sub_texts.values())
+        return texts
+
+    for file_path in directory.glob("*.txt"):
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read().strip()
+                if content:
+                    texts[file_path.stem] = content
+        except Exception:
+            pass
+
+    return texts
 
 
 def analyze_authorship_corpus(

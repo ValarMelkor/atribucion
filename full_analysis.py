@@ -88,37 +88,45 @@ def main() -> None:
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # ---- N-GRAMAS ----
-    analyzer = ngram_mod.ForensicAnalyzer(min_text_length=args.min_length)
     known_texts = ngram_mod.load_texts_by_author(Path(args.known))
-    query_texts = ngram_mod.load_texts_from_directory(Path(args.query))
+    query_groups = ngram_mod.load_texts_from_directory(Path(args.query), combine_subdirs=True)
+
     n_range = tuple(args.n_range) if args.n_range else None
-    pk = analyzer.build_profiles(known_texts, level=args.levels, n_range=n_range, top_k=args.top_k)
-    pq = analyzer.build_profiles(query_texts, level=args.levels, n_range=n_range, top_k=args.top_k)
-    dist_ng = analyzer.compare_profiles(pk, pq)
-    files_ng = analyzer.export_results(pk, pq, dist_ng, out_dir / 'ngrams')
 
-    # ---- SINTAXIS ----
-    syntax = syntax_mod.SyntaxForensics()
-    sk = syntax.build_syntax_profiles(known_texts)
-    sq = syntax.build_syntax_profiles(query_texts)
-    dist_syn = syntax.compare_syntax(sk, sq)
-    files_syn = syntax.export_syntax_results({**sk, **sq}, dist_syn, out_dir / 'syntax')
+    summary_entries = []
 
-    # ---- LÉXICA ----
-    lex_an = lex_mod.LexicalComplexityAnalyzer()
-    lk = {n: lex_an.analyze_text(t) for n, t in known_texts.items()}
-    lq = {n: lex_an.analyze_text(t) for n, t in query_texts.items()}
-    dist_lex = lex_mod.compare_lexical_profiles(lk, lq)
-    files_lex = lex_mod.export_lexical_results({**lk, **lq}, dist_lex, out_dir / 'lexical')
+    for query_name, query_text in query_groups.items():
+        for author, known_text in known_texts.items():
+            # N-gramas
+            analyzer = ngram_mod.ForensicAnalyzer(min_text_length=args.min_length)
+            pk = analyzer.build_profiles({author: known_text}, level=args.levels, n_range=n_range, top_k=args.top_k)
+            pq = analyzer.build_profiles({query_name: query_text}, level=args.levels, n_range=n_range, top_k=args.top_k)
+            dist_ng = analyzer.compare_profiles(pk, pq)
+            files_ng = analyzer.export_results(pk, pq, dist_ng, out_dir / 'ngrams', author=author, query=query_name)
 
-    # ---- Resumen ----
+            # Sintaxis
+            syntax = syntax_mod.SyntaxForensics()
+            sk = syntax.build_syntax_profiles({author: known_text})
+            sq = syntax.build_syntax_profiles({query_name: query_text})
+            dist_syn = syntax.compare_syntax(sk, sq)
+            files_syn = syntax.export_syntax_results({**sk, **sq}, dist_syn, out_dir / 'syntax', author=author, query=query_name)
+
+            # Léxica
+            lex_an = lex_mod.LexicalComplexityAnalyzer()
+            lk = {author: lex_an.analyze_text(known_text)}
+            lq = {query_name: lex_an.analyze_text(query_text)}
+            dist_lex = lex_mod.compare_lexical_profiles(lk, lq)
+            files_lex = lex_mod.export_lexical_results({**lk, **lq}, dist_lex, out_dir / 'lexical', author=author, query=query_name)
+
+            for d in (files_ng, files_syn, files_lex):
+                for p in d.values():
+                    summary_entries.append(str(p))
+
     summary_path = out_dir / 'full_summary.txt'
     with open(summary_path, 'w', encoding='utf-8') as f:
         f.write('ARCHIVOS GENERADOS\n')
-        for d in (files_ng, files_syn, files_lex):
-            for k, p in d.items():
-                f.write(f"{k}: {p}\n")
+        for path in summary_entries:
+            f.write(f"{path}\n")
 
     print(f"Resumen guardado en {summary_path}")
 
