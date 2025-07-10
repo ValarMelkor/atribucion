@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Ejecuta N-gramas, análisis sintáctico y complejidad léxica de forma unificada."""
 
-import argparse
 from pathlib import Path
 import importlib.util
 import subprocess
@@ -73,60 +72,83 @@ syntax_mod = load_module(Path(__file__).with_name('analisis sintactico.py'), 'sy
 lex_mod = load_module(Path(__file__).with_name('complejidad lexica.py'), 'lexical')
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description='Análisis forense combinado')
-    parser.add_argument('--known', required=True, help='Dir textos conocidos (subdirectorios=autor)')
-    parser.add_argument('--query', required=True, help='Dir textos dubitados')
-    parser.add_argument('--out', required=True, help='Directorio de salida')
-    parser.add_argument('--levels', nargs='+', choices=['char', 'word'], default=['char'],
-                        help='Niveles de n-gramas a calcular')
-    parser.add_argument('--n-range', nargs=2, type=int, metavar=('MIN','MAX'))
-    parser.add_argument('--top-k', type=int, default=500)
-    parser.add_argument('--min-length', type=int, default=300)
-    args = parser.parse_args()
+def _prompt(msg: str, default: str = "") -> str:
+    """Helper to prompt the user with a default value."""
+    prompt = f"{msg} [{'Enter' if default == '' else default}]: "
+    resp = input(prompt).strip()
+    return resp or default
 
-    out_dir = Path(args.out)
+
+def main() -> None:
+    print("=== Análisis Forense Interactivo ===")
+    known_dir = _prompt("Directorio con textos conocidos")
+    query_dir = _prompt("Directorio con textos dubitados")
+    out_dir = Path(_prompt("Directorio de salida", "resultados"))
+
+    print("\n--- Parámetros de n-gramas ---")
+    print("Opciones de nivel: 'char' = caracteres, 'word' = palabras")
+    levels_in = _prompt("Niveles (separados por espacio)", "char")
+    levels = levels_in.split()
+
+    rng_in = _prompt("Rango n-gram (min max, vacío=defecto)")
+    n_range = tuple(map(int, rng_in.split())) if rng_in else None
+    top_k_ng = int(_prompt("top_k n-gramas", "500"))
+    min_len = int(_prompt("Longitud mínima de texto", "300"))
+
+    print("\n--- Parámetros de análisis sintáctico ---")
+    print("Modelos spaCy comunes: es_core_news_sm, es_core_news_md, es_core_news_lg")
+    spacy_model_syn = _prompt("Modelo spaCy", "es_core_news_md")
+    top_k_syn = int(_prompt("top_k características sintácticas", "500"))
+
+    print("\n--- Parámetros de complejidad léxica ---")
+    spacy_model_lex = _prompt("Modelo spaCy", "es_core_news_md")
+
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    known_texts = ngram_mod.load_texts_by_author(Path(args.known))
-    query_groups = ngram_mod.load_texts_from_directory(Path(args.query), combine_subdirs=True)
-
-    n_range = tuple(args.n_range) if args.n_range else None
+    known_texts = ngram_mod.load_texts_by_author(Path(known_dir))
+    query_groups = ngram_mod.load_texts_from_directory(Path(query_dir), combine_subdirs=True)
 
     summary_entries = []
 
     for query_name, query_text in query_groups.items():
         for author, known_text in known_texts.items():
+            pair_out = out_dir / author / query_name
+
             # N-gramas
-            analyzer = ngram_mod.ForensicAnalyzer(min_text_length=args.min_length)
-            pk = analyzer.build_profiles({author: known_text}, level=args.levels, n_range=n_range, top_k=args.top_k)
-            pq = analyzer.build_profiles({query_name: query_text}, level=args.levels, n_range=n_range, top_k=args.top_k)
+            analyzer = ngram_mod.ForensicAnalyzer(min_text_length=min_len)
+            pk = analyzer.build_profiles({author: known_text}, level=levels, n_range=n_range, top_k=top_k_ng)
+            pq = analyzer.build_profiles({query_name: query_text}, level=levels, n_range=n_range, top_k=top_k_ng)
             dist_ng = analyzer.compare_profiles(pk, pq)
-            files_ng = analyzer.export_results(pk, pq, dist_ng, out_dir / 'ngrams', author=author, query=query_name)
+            files_ng = analyzer.export_results(pk, pq, dist_ng, pair_out / 'ngrams')
 
             # Sintaxis
-            syntax = syntax_mod.SyntaxForensics()
+            syntax = syntax_mod.SyntaxForensics(model_name=spacy_model_syn, top_k=top_k_syn)
             sk = syntax.build_syntax_profiles({author: known_text})
             sq = syntax.build_syntax_profiles({query_name: query_text})
             dist_syn = syntax.compare_syntax(sk, sq)
-            files_syn = syntax.export_syntax_results({**sk, **sq}, dist_syn, out_dir / 'syntax', author=author, query=query_name)
+            files_syn = syntax.export_syntax_results({**sk, **sq}, dist_syn, pair_out / 'syntax')
 
             # Léxica
-            lex_an = lex_mod.LexicalComplexityAnalyzer()
+            lex_an = lex_mod.LexicalComplexityAnalyzer(spacy_model_lex)
             lk = {author: lex_an.analyze_text(known_text)}
             lq = {query_name: lex_an.analyze_text(query_text)}
             dist_lex = lex_mod.compare_lexical_profiles(lk, lq)
-            files_lex = lex_mod.export_lexical_results({**lk, **lq}, dist_lex, out_dir / 'lexical', author=author, query=query_name)
+            files_lex = lex_mod.export_lexical_results({**lk, **lq}, dist_lex, pair_out / 'lexical')
 
             for d in (files_ng, files_syn, files_lex):
                 for p in d.values():
-                    summary_entries.append(str(p))
+                    if isinstance(p, list):
+                        for sub in p:
+                            summary_entries.append(str(sub))
+                    else:
+                        summary_entries.append(str(p))
 
     summary_path = out_dir / 'full_summary.txt'
     with open(summary_path, 'w', encoding='utf-8') as f:
         f.write('ARCHIVOS GENERADOS\n')
         for path in summary_entries:
-            f.write(f"{path}\n")
+            if path.endswith('.pdf') or path.endswith('.md'):
+                f.write(f"{path}\n")
 
     print(f"Resumen guardado en {summary_path}")
 
