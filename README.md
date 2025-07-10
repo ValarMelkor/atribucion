@@ -63,3 +63,33 @@ Los cargadores de texto aceptan archivos con extensiones `.txt`, `.md` y `.text`
     ```
 
 Los resultados incluirán archivos CSV con perfiles, gráficas PNG y un archivo `full_summary.txt` con las rutas de todos los artefactos generados.
+
+## Estructura de resultados
+
+Al ejecutarse, cada par **autor - texto dubitado** genera un directorio con el patrón `Resultados_<autor>_<query>` dentro de la ruta de salida. En él se crean subcarpetas por módulo:
+
+```
+salida/
+  autor1/
+    Resultados_autor1_q1/
+      ngrams/
+      syntax/
+      lexical/
+    Resultados_autor1_q2/
+      ...
+  autor2/
+    Resultados_autor2_q1/
+      ...
+```
+
+Cada subcarpeta contiene archivos CSV con perfiles y distancias, gráficas PNG, un resumen en Markdown (`*_summary.md`) y, cuando `pandoc` o `fpdf` están disponibles, su versión en PDF.
+
+## Flujo interactivo de `full_analysis.py`
+
+El script principal no usa argumentos en la línea de comandos. Al ejecutarlo, se muestra un asistente que solicita rutas y parámetros clave:
+
+1. Directorios con textos conocidos y dubitados.
+2. Ubicación donde guardar los resultados.
+3. Opciones de los tres módulos (rangos de n‑gramas, modelo spaCy, etc.).
+
+Tras responder a las preguntas, comienza el procesamiento y al final se crea `full_summary.txt` con las rutas de todos los resúmenes Markdown/PDF generados.
