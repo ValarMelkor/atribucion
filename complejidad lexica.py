@@ -504,14 +504,17 @@ def load_texts_from_directory(directory: Path, combine_subdirs: bool = False) ->
                 texts[sub.name] = "\n".join(sub_texts.values())
         return texts
 
-    for file_path in directory.glob("*.txt"):
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read().strip()
-                if content:
-                    texts[file_path.stem] = content
-        except Exception:
-            pass
+    extensions = [".txt", ".md", ".text"]
+
+    for file_path in directory.iterdir():
+        if file_path.is_file() and file_path.suffix.lower() in extensions:
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    content = f.read().strip()
+                    if content:
+                        texts[file_path.stem] = content
+            except Exception:
+                pass
 
     return texts
 

@@ -8,6 +8,8 @@ Este proyecto reúne tres módulos de análisis de texto en español:
 
 El script `full_analysis.py` ejecuta los tres módulos de forma consecutiva y reúne los resultados en un solo directorio.
 
+Los cargadores de texto aceptan archivos con extensiones `.txt`, `.md` y `.text`.
+
 ## Organización de carpetas
 
 1. **Textos conocidos** (`--known`)
@@ -23,7 +25,7 @@ El script `full_analysis.py` ejecuta los tres módulos de forma consecutiva y re
      ```
 
 2. **Textos dubitados** (`--query`)
-   - Directorio con archivos de texto individuales. No requiere subdirectorios.
+   - Directorio con archivos de texto individuales (`.txt`, `.md` o `.text`). No requiere subdirectorios.
    - Ejemplo:
      ```
      dubitados/
