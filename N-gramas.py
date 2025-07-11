@@ -168,7 +168,7 @@ class ForensicAnalyzer:
             # IDF: log(N / df)
             df = (matrix > 0).sum(axis=0)
             n_docs = matrix.shape[0]
-            idf = np.log(n_docs / (df + 1))
+            idf = np.log(n_docs / (df + 1e-10))  # 1e-10 para evitar division por cero
             
             return tf * idf
         
