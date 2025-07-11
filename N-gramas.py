@@ -287,6 +287,13 @@ class ForensicAnalyzer:
 
         results = {}
 
+        if not profiles_b:
+            logger.warning("profiles_b está vacío. Devolviendo DataFrames vacíos")
+            empty_index = list(profiles_a.keys())
+            for m in metrics:
+                results[m] = pd.DataFrame(index=empty_index)
+            return results
+
         if "cosine" in metrics:
             logger.info("Calculando similitud coseno TF-IDF...")
             results["cosine"] = self.cosine_tfidf_similarity(profiles_a, profiles_b)
