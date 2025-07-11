@@ -538,7 +538,7 @@ def load_texts_from_directory(directory: Path, combine_subdirs: bool = False) ->
     subdirs = [d for d in directory.iterdir() if d.is_dir()]
     if combine_subdirs and subdirs:
         for sub in subdirs:
-            sub_texts = load_texts_from_directory(sub)
+            sub_texts = load_texts_from_directory(sub, combine_subdirs=combine_subdirs)
             if sub_texts:
                 texts[sub.name] = "\n".join(sub_texts.values())
         return texts

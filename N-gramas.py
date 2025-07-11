@@ -566,7 +566,7 @@ def load_texts_from_directory(directory: Path, combine_subdirs: bool = False) ->
     # Cuando se solicite combinar subdirectorios y existan carpetas internas
     if combine_subdirs and subdirs:
         for sub in subdirs:
-            sub_texts = load_texts_from_directory(sub)
+            sub_texts = load_texts_from_directory(sub, combine_subdirs=combine_subdirs)
             if sub_texts:
                 texts[sub.name] = "\n".join(sub_texts.values())
         return texts
