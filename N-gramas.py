@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.spatial.distance import jensenshannon
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Configurar logging
@@ -33,8 +33,6 @@ class ForensicAnalyzer:
     
     def __init__(self, min_text_length: int = 300):
         self.min_text_length = min_text_length
-        self.profiles_char = {}
-        self.profiles_word = {}
         self.text_metadata = {}
     
     def normalize_text(self, text: str) -> str:
@@ -98,19 +96,17 @@ class ForensicAnalyzer:
         level: Union[str, List[str]] = "char",
         n_range: Tuple[int, int] = None,
         top_k: int = 500,
-    ) -> Union[Dict[str, pd.Series], Dict[str, Dict[str, pd.Series]]]:
+    ) -> Dict[str, Dict[str, pd.Series]]:
         """Construye perfiles de n-gramas para múltiples textos.
 
-        Si ``level`` es una lista, se generarán todos los perfiles indicados en
-        un mismo ciclo y se devolverá un diccionario por nivel.
+        Siempre devuelve un diccionario con la forma ``{nivel: {id_texto: perfil}}``
+        sin importar cuántos niveles se soliciten.
         """
 
         levels = [level] if isinstance(level, str) else list(level)
 
         base_range = tuple(n_range) if n_range is not None else None
-
-        multi_level = len(levels) > 1
-        profiles = {lvl: {} for lvl in levels} if multi_level else {}
+        profiles = {lvl: {} for lvl in levels}
 
         for text_id, content in texts.items():
             normalized = self.normalize_text(content)
@@ -126,17 +122,12 @@ class ForensicAnalyzer:
                 rng = base_range if base_range else ((3, 5) if lvl == "char" else (1, 3))
                 if lvl == "char":
                     profile = self.build_char_profile(normalized, rng, top_k)
-                    self.profiles_char[text_id] = profile
                 elif lvl == "word":
                     profile = self.build_word_profile(normalized, rng, top_k)
-                    self.profiles_word[text_id] = profile
                 else:
                     raise ValueError(f"Nivel no soportado: {lvl}")
 
-                if multi_level:
-                    profiles[lvl][text_id] = profile
-                else:
-                    profiles[text_id] = profile
+                profiles[lvl][text_id] = profile
 
         return profiles
     
@@ -310,22 +301,17 @@ class ForensicAnalyzer:
 
     def compare_profiles(
         self,
-        profiles_a: Union[Dict[str, pd.Series], Dict[str, Dict[str, pd.Series]]],
-        profiles_b: Union[Dict[str, pd.Series], Dict[str, Dict[str, pd.Series]]],
+        profiles_a: Dict[str, Dict[str, pd.Series]],
+        profiles_b: Dict[str, Dict[str, pd.Series]],
         metrics: List[str] = None,
-    ) -> Union[Dict[str, pd.DataFrame], Dict[str, Dict[str, pd.DataFrame]]]:
+    ) -> Dict[str, Dict[str, pd.DataFrame]]:
         """Compara perfiles para uno o varios niveles."""
 
-        # Caso multi-nivel
-        if profiles_a and isinstance(next(iter(profiles_a.values())), dict):
-            results = {}
-            for lvl in profiles_a.keys():
-                res = self._compare_single(profiles_a[lvl], profiles_b.get(lvl, {}), metrics)
-                results[lvl] = res
-            return results
-
-        # Caso simple
-        return self._compare_single(profiles_a, profiles_b, metrics)
+        results: Dict[str, Dict[str, pd.DataFrame]] = {}
+        for lvl in profiles_a.keys():
+            res = self._compare_single(profiles_a[lvl], profiles_b.get(lvl, {}), metrics)
+            results[lvl] = res
+        return results
     
     def plot_top_ngrams(self, profile: pd.Series, text_id: str,
                        top_n: int = 20, save_path: Optional[Path] = None) -> Path:
@@ -522,9 +508,9 @@ class ForensicAnalyzer:
 
     def export_results(
         self,
-        profiles_known: Union[Dict[str, pd.Series], Dict[str, Dict[str, pd.Series]]],
-        profiles_query: Union[Dict[str, pd.Series], Dict[str, Dict[str, pd.Series]]],
-        distances: Union[Dict[str, pd.DataFrame], Dict[str, Dict[str, pd.DataFrame]]],
+        profiles_known: Dict[str, Dict[str, pd.Series]],
+        profiles_query: Dict[str, Dict[str, pd.Series]],
+        distances: Dict[str, Dict[str, pd.DataFrame]],
         out_dir: Path,
         author: str = "",
         query: str = "",
@@ -538,20 +524,18 @@ class ForensicAnalyzer:
         if author and query:
             out_dir = Path(out_dir) / author / f"Resultados_{author}_{query}"
 
-        if profiles_known and isinstance(next(iter(profiles_known.values())), dict):
-            all_files: Dict[str, Path] = {}
-            for lvl in profiles_known.keys():
-                sub_out = Path(out_dir) / lvl
-                files = self._export_single(
-                    profiles_known[lvl],
-                    profiles_query.get(lvl, {}),
-                    distances.get(lvl, {}),
-                    sub_out,
-                )
-                all_files.update({f"{k}_{lvl}": v for k, v in files.items()})
-            return all_files
+        all_files: Dict[str, Path] = {}
+        for lvl in profiles_known.keys():
+            sub_out = Path(out_dir) / lvl
+            files = self._export_single(
+                profiles_known[lvl],
+                profiles_query.get(lvl, {}),
+                distances.get(lvl, {}),
+                sub_out,
+            )
+            all_files.update({f"{k}_{lvl}": v for k, v in files.items()})
 
-        return self._export_single(profiles_known, profiles_query, distances, Path(out_dir))
+        return all_files
 
 
 def load_texts_from_directory(directory: Path, combine_subdirs: bool = False) -> Dict[str, str]:
