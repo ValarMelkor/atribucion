@@ -6,9 +6,14 @@ Este proyecto reúne tres módulos de análisis de texto en español:
 - **Análisis sintáctico**: distribución de etiquetas gramaticales y dependencias.
 - **Complejidad léxica**: métricas de diversidad y sofisticación del vocabulario.
 
+
 El script `full_analysis.py` ejecuta los tres módulos de forma consecutiva y reúne los resultados en un solo directorio.
 
 Los cargadores de texto aceptan archivos con extensiones `.txt`, `.md` y `.text`.
+
+## Normalización del texto
+
+Durante la normalización se conservan todos los signos de puntuación. Para que formen parte de los perfiles de n‑gramas de palabra, se tokenizan de forma independiente mediante `CountVectorizer` y el patrón `token_pattern="(?u)\w+|[^\w\s]"`.
 
 ## Organización de carpetas
 

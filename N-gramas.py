@@ -81,7 +81,7 @@ class ForensicAnalyzer:
             ngram_range=n_range,
             max_features=top_k,
             lowercase=False,  # Ya normalizamos
-            token_pattern=r'\b\w+\b'  # Solo palabras, mantiene puntuación separada
+            token_pattern=r'(?u)\w+|[^\w\s]'  # Palabras y signos de puntuación como tokens
         )
         
         word_matrix = vectorizer.fit_transform([text])
